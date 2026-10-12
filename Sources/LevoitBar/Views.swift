@@ -56,6 +56,7 @@ struct ContentView: View {
         .frame(width: 340)
         .environment(\.colorScheme, .dark)
         .foregroundStyle(.white)
+        .environmentObject(model.activity)
     }
 
     private var background: some View {
@@ -187,7 +188,7 @@ struct DashboardView: View {
         }
 
         Footer()
-            .onAppear { Task { await model.refresh() } }
+            .onAppear { Task { await model.refreshIfStale() } }
     }
 }
 
@@ -449,21 +450,30 @@ struct PurifierPanel: View {
 // MARK: - Components
 
 struct PowerButton: View {
+    @EnvironmentObject var activity: ActivityMonitor
     let isOn: Bool
     let action: () -> Void
+
+    private var halo: some View {
+        Circle()
+            .fill(Theme.accent)
+            .frame(width: 50, height: 50)
+            .blur(radius: 6)
+    }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 if isOn {
-                    // Soft breathing halo while running
-                    TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
-                        let t = ctx.date.timeIntervalSinceReferenceDate
-                        let pulse = (sin(t * 2.2) + 1) / 2
-                        Circle()
-                            .fill(Theme.accent.opacity(0.25 + 0.2 * pulse))
-                            .frame(width: 44 + 10 * pulse, height: 44 + 10 * pulse)
-                            .blur(radius: 6)
+                    // Soft breathing halo while running. Only the opacity animates, so
+                    // the blur is rendered once rather than every frame, and it holds
+                    // still whenever the panel isn't on screen.
+                    if activity.animatePanel {
+                        PhaseAnimator([0.3, 0.55]) { opacity in
+                            halo.opacity(opacity)
+                        } animation: { _ in .easeInOut(duration: 1.4) }
+                    } else {
+                        halo.opacity(0.4)
                     }
                 }
                 Circle()
@@ -489,6 +499,7 @@ struct PowerButton: View {
 
 /// Illustrated purifier with animated airflow streaming out of the top vent.
 struct PurifierHero: View {
+    @EnvironmentObject var activity: ActivityMonitor
     let isOn: Bool
     let level: Int
     let tint: Color
@@ -496,7 +507,9 @@ struct PurifierHero: View {
 
     var body: some View {
         ZStack {
-            TimelineView(.animation(minimumInterval: 1 / 45, paused: !isOn)) { ctx in
+            // 30 fps is plenty for drifting particles, and the timeline stops
+            // completely when the panel is closed or the screen is asleep.
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: !isOn || !activity.animatePanel)) { ctx in
                 Canvas { context, size in
                     guard isOn else { return }
                     drawAirflow(context: context, size: size,
@@ -532,8 +545,7 @@ struct PurifierHero: View {
             let dashPhase = CGFloat(-(time * speed * 38).truncatingRemainder(dividingBy: 1000))
             let alpha = (1 - abs(f) * 1.1) * 0.55 * intensity
             context.stroke(path,
-                           with: .linearGradient(Gradient(colors: [tint.opacity(alpha), tint.opacity(0)]),
-                                                 startPoint: vent, endPoint: CGPoint(x: vent.x, y: 0)),
+                           with: .color(tint.opacity(alpha * 0.6)),
                            style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [7, 11], dashPhase: dashPhase))
         }
 

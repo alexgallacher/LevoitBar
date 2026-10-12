@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     /// animation doesn't redraw the whole panel.
     let menuIcon = MenuIconAnimator()
     let updater = Updater()
+    let activity = ActivityMonitor()
 
     var anyOn: Bool { purifiers.contains { $0.status?.isOn == true } }
 
@@ -40,6 +41,7 @@ final class AppModel: ObservableObject {
     init() {
         let saved = Keychain.credentials
         client = VeSyncClient(credentials: saved)
+        watchActivity()
         if saved != nil {
             isLoggedIn = true
             startPolling()
@@ -47,9 +49,24 @@ final class AppModel: ObservableObject {
         updater.start()
     }
 
-    /// For snapshots: no Keychain access, no network.
+    /// For snapshots and `--demo`: no Keychain access, no network.
     init(noAutoLogin: Void) {
         client = VeSyncClient(credentials: nil)
+        watchActivity()
+    }
+
+    private var wasPresent = true
+
+    private func watchActivity() {
+        activity.onChange = { [weak self] in
+            guard let self else { return }
+            menuIcon.setAllowed(activity.animateMenuIcon)
+            // Catch up straight away when the user comes back.
+            if activity.userPresent && !wasPresent {
+                Task { await self.refresh() }
+            }
+            wasPresent = activity.userPresent
+        }
     }
 
     func loadDemo(_ items: [Purifier]) {
@@ -111,10 +128,21 @@ final class AppModel: ObservableObject {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                // Nobody's looking while the displays sleep or the user is switched
+                // out, so skip the network round trips until they're back.
+                if self?.activity.userPresent ?? false {
+                    await self?.refresh()
+                }
                 try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
             }
         }
+    }
+
+    /// Refresh only if the data is older than `maxAge` seconds (used when the
+    /// panel opens, so quickly reopening it doesn't hit the network every time).
+    func refreshIfStale(maxAge: TimeInterval = 15) async {
+        if let lastUpdated, Date().timeIntervalSince(lastUpdated) < maxAge { return }
+        await refresh()
     }
 
     func refresh() async {
