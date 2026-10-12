@@ -4,6 +4,9 @@ import SwiftUI
 /// `LevoitBar --snapshot <file.png>` renders the panel with sample data and exits.
 /// Handy for checking the design without signing in.
 enum Snapshot {
+    /// True while rendering a snapshot (menus can't be drawn offscreen).
+    static var isActive = false
+
     @MainActor
     static func runIfRequested() {
         let args = CommandLine.arguments
@@ -11,6 +14,7 @@ enum Snapshot {
             renderIcons(to: args[i + 1])
         }
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
+        isActive = true
         let model = AppModel(demo: true)
         let view = ContentView().environmentObject(model)
         let renderer = ImageRenderer(content: view)

@@ -238,7 +238,11 @@ struct Footer: View {
             .buttonStyle(.plain).foregroundStyle(Theme.secondary)
             .help("Refresh")
 
-            SettingsMenu(updater: model.updater)
+            if Snapshot.isActive {
+                Image(systemName: "ellipsis.circle").foregroundStyle(Theme.secondary)
+            } else {
+                SettingsMenu(updater: model.updater)
+            }
         }
     }
 }

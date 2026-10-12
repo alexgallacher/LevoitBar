@@ -64,9 +64,10 @@ final class AppModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            let creds = try await client.login(email: email, password: password, countryCode: countryCode)
+            let hash = VeSyncClient.md5(password)
+            let creds = try await client.login(email: email, passwordHash: hash, countryCode: countryCode)
             self.email = email
-            Keychain.password = password
+            Keychain.passwordHash = hash
             Keychain.credentials = creds
             isLoading = false
             isLoggedIn = true
@@ -80,7 +81,7 @@ final class AppModel: ObservableObject {
     func logout() {
         pollTask?.cancel()
         pollTask = nil
-        Keychain.password = nil
+        Keychain.passwordHash = nil
         Keychain.credentials = nil
         Task { await client.setCredentials(nil) }
         purifiers = []
@@ -94,11 +95,11 @@ final class AppModel: ObservableObject {
         do {
             return try await work()
         } catch let error as VeSyncError where error.isAuthError || error.isNotLoggedIn {
-            guard let password = Keychain.password, !email.isEmpty else {
+            guard let hash = Keychain.passwordHash, !email.isEmpty else {
                 logout()
                 throw error
             }
-            let creds = try await client.login(email: email, password: password, countryCode: countryCode)
+            let creds = try await client.login(email: email, passwordHash: hash, countryCode: countryCode)
             Keychain.credentials = creds
             return try await work()
         }

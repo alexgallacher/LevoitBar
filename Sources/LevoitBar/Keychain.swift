@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// Small wrapper around the macOS Keychain for the VeSync password and session.
+/// Small wrapper around the macOS Keychain for the VeSync login and session.
 enum Keychain {
     private static let service = "com.levoitbar.vesync"
 
@@ -42,10 +42,21 @@ enum Keychain {
 
     // Typed helpers
 
-    static var password: String? {
-        get { get("password").flatMap { String(data: $0, encoding: .utf8) } }
+    /// MD5 hash of the VeSync password (the form VeSync's login takes). The plain
+    /// password is never stored. Older builds stored it under "password"; that entry
+    /// is converted to a hash and removed the first time it's read.
+    static var passwordHash: String? {
+        get {
+            if let hash = get("passwordHash").flatMap({ String(data: $0, encoding: .utf8) }) { return hash }
+            guard let legacy = get("password").flatMap({ String(data: $0, encoding: .utf8) }) else { return nil }
+            let hash = VeSyncClient.md5(legacy)
+            set(Data(hash.utf8), for: "passwordHash")
+            delete("password")
+            return hash
+        }
         set {
-            if let newValue { set(Data(newValue.utf8), for: "password") } else { delete("password") }
+            delete("password")
+            if let newValue { set(Data(newValue.utf8), for: "passwordHash") } else { delete("passwordHash") }
         }
     }
 

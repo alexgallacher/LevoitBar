@@ -5,3 +5,5 @@ build/
 .swiftpm/
 build.log
 build.done
+release.log
+release.done

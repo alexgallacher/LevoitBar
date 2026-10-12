@@ -96,11 +96,14 @@ actor VeSyncClient {
     /// Two-step login used by current VeSync apps: exchange email/password for an
     /// authorize code, then exchange that code for a token. If the account lives in
     /// another region (e.g. EU), the server says so and we retry there.
-    func login(email: String, password: String, countryCode: String) async throws -> VeSyncCredentials {
+    ///
+    /// `passwordHash` is the MD5 of the password, which is what VeSync's API expects.
+    /// The app only ever keeps this hash, never the plain password.
+    func login(email: String, passwordHash: String, countryCode: String) async throws -> VeSyncCredentials {
         let authBody: [String: Any] = [
             "email": email,
             "method": "authByPWDOrOTM",
-            "password": Self.md5(password),
+            "password": passwordHash,
             "acceptLanguage": "en",
             "accountID": "",
             "authProtocolType": "generic",
